@@ -1,0 +1,554 @@
+// This Pine Script™ source code is subject to the terms of the Mozilla Public License 2.0
+// https://mozilla.org/MPL/2.0/
+// © donateETH - Federal Reserve Global Macro Trading Model
+
+//@version=5
+indicator("Fed Reserve Global Macro Model", shorttitle="FedMacro", overlay=false, max_lines_count=500, max_labels_count=500)
+
+// ============================================================================
+// SECTION 1: FEDERAL RESERVE KEY RATES & MONETARY POLICY
+// ============================================================================
+
+grp_rates = "═══ FED RATES & MONETARY POLICY ═══"
+
+i_show_ffr       = input.bool(true, "Show Fed Funds Rate", group=grp_rates)
+i_ffr_upper      = input.float(4.50, "Fed Funds Rate - Upper Bound (%)", minval=0, maxval=20, step=0.25, group=grp_rates)
+i_ffr_lower      = input.float(4.25, "Fed Funds Rate - Lower Bound (%)", minval=0, maxval=20, step=0.25, group=grp_rates)
+i_ffr_color       = input.color(color.red, "FFR Color", group=grp_rates)
+
+i_show_ioer      = input.bool(true, "Show Interest on Excess Reserves (IOER)", group=grp_rates)
+i_ioer           = input.float(4.40, "IOER Rate (%)", minval=0, maxval=20, step=0.05, group=grp_rates)
+
+i_show_discount  = input.bool(true, "Show Discount Rate", group=grp_rates)
+i_discount       = input.float(5.00, "Discount Rate (%)", minval=0, maxval=20, step=0.25, group=grp_rates)
+
+i_show_rrp       = input.bool(false, "Show Reverse Repo Rate (ON RRP)", group=grp_rates)
+i_rrp_rate       = input.float(4.25, "Reverse Repo Rate (%)", minval=0, maxval=20, step=0.05, group=grp_rates)
+
+i_show_sofr      = input.bool(false, "Show SOFR (Secured Overnight Financing Rate)", group=grp_rates)
+i_sofr           = input.float(4.30, "SOFR (%)", minval=0, maxval=20, step=0.01, group=grp_rates)
+
+// ============================================================================
+// SECTION 2: FED BALANCE SHEET / QUANTITATIVE POLICY
+// ============================================================================
+
+grp_bs = "═══ FED BALANCE SHEET & QE/QT ═══"
+
+i_show_bs        = input.bool(true, "Show Balance Sheet Total", group=grp_bs)
+i_bs_total       = input.float(6.80, "Total Balance Sheet ($ Trillions)", minval=0, maxval=15, step=0.01, group=grp_bs)
+i_bs_color       = input.color(color.blue, "Balance Sheet Color", group=grp_bs)
+
+i_show_treasury  = input.bool(false, "Show Treasury Holdings", group=grp_bs)
+i_treasury_hold  = input.float(4.20, "Treasury Holdings ($ Trillions)", minval=0, maxval=10, step=0.01, group=grp_bs)
+
+i_show_mbs       = input.bool(false, "Show MBS Holdings", group=grp_bs)
+i_mbs_hold       = input.float(2.20, "MBS Holdings ($ Trillions)", minval=0, maxval=5, step=0.01, group=grp_bs)
+
+i_show_qt_pace   = input.bool(true, "Show QT Monthly Pace", group=grp_bs)
+i_qt_treasury    = input.float(25.0, "QT - Treasury Runoff ($ Billions/month)", minval=0, maxval=100, step=5, group=grp_bs)
+i_qt_mbs         = input.float(35.0, "QT - MBS Runoff ($ Billions/month)", minval=0, maxval=100, step=5, group=grp_bs)
+
+i_show_rrp_bal   = input.bool(true, "Show Reverse Repo Facility Balance", group=grp_bs)
+i_rrp_balance    = input.float(0.15, "RRP Balance ($ Trillions)", minval=0, maxval=3, step=0.01, group=grp_bs)
+
+i_show_tga       = input.bool(true, "Show Treasury General Account (TGA)", group=grp_bs)
+i_tga            = input.float(0.75, "TGA Balance ($ Trillions)", minval=0, maxval=2, step=0.01, group=grp_bs)
+
+i_show_reserves  = input.bool(false, "Show Bank Reserves", group=grp_bs)
+i_reserves       = input.float(3.20, "Bank Reserves ($ Trillions)", minval=0, maxval=5, step=0.01, group=grp_bs)
+
+// ============================================================================
+// SECTION 3: INFLATION DATA
+// ============================================================================
+
+grp_infl = "═══ INFLATION DATA ═══"
+
+i_show_cpi       = input.bool(true, "Show CPI YoY", group=grp_infl)
+i_cpi_yoy        = input.float(2.9, "CPI YoY (%)", minval=-5, maxval=20, step=0.1, group=grp_infl)
+i_cpi_color      = input.color(color.orange, "CPI Color", group=grp_infl)
+
+i_show_core_cpi  = input.bool(true, "Show Core CPI YoY (ex Food & Energy)", group=grp_infl)
+i_core_cpi       = input.float(3.2, "Core CPI YoY (%)", minval=-5, maxval=20, step=0.1, group=grp_infl)
+
+i_show_pce       = input.bool(true, "Show PCE YoY (Fed's Preferred)", group=grp_infl)
+i_pce_yoy        = input.float(2.6, "PCE YoY (%)", minval=-5, maxval=20, step=0.1, group=grp_infl)
+i_pce_color      = input.color(color.yellow, "PCE Color", group=grp_infl)
+
+i_show_core_pce  = input.bool(true, "Show Core PCE YoY", group=grp_infl)
+i_core_pce       = input.float(2.8, "Core PCE YoY (%)", minval=-5, maxval=20, step=0.1, group=grp_infl)
+
+i_show_ppi       = input.bool(false, "Show PPI YoY", group=grp_infl)
+i_ppi_yoy        = input.float(1.0, "PPI YoY (%)", minval=-10, maxval=20, step=0.1, group=grp_infl)
+
+i_show_breakeven = input.bool(true, "Show 5Y Breakeven Inflation", group=grp_infl)
+i_breakeven_5y   = input.float(2.35, "5Y Breakeven Inflation (%)", minval=-2, maxval=10, step=0.05, group=grp_infl)
+
+i_show_be_10y    = input.bool(false, "Show 10Y Breakeven Inflation", group=grp_infl)
+i_breakeven_10y  = input.float(2.30, "10Y Breakeven Inflation (%)", minval=-2, maxval=10, step=0.05, group=grp_infl)
+
+i_fed_target     = input.float(2.0, "Fed Inflation Target (%)", minval=0, maxval=5, step=0.1, group=grp_infl)
+
+// ============================================================================
+// SECTION 4: LABOR MARKET
+// ============================================================================
+
+grp_labor = "═══ LABOR MARKET ═══"
+
+i_show_unemp     = input.bool(true, "Show Unemployment Rate", group=grp_labor)
+i_unemployment   = input.float(4.1, "Unemployment Rate (%)", minval=0, maxval=25, step=0.1, group=grp_labor)
+i_unemp_color    = input.color(color.lime, "Unemployment Color", group=grp_labor)
+
+i_show_nfp       = input.bool(true, "Show Non-Farm Payrolls (NFP)", group=grp_labor)
+i_nfp            = input.float(256.0, "NFP (Thousands)", minval=-2000, maxval=5000, step=10, group=grp_labor)
+
+i_show_jolts     = input.bool(false, "Show JOLTS Job Openings", group=grp_labor)
+i_jolts          = input.float(8.1, "JOLTS Openings (Millions)", minval=0, maxval=15, step=0.1, group=grp_labor)
+
+i_show_claims    = input.bool(false, "Show Initial Jobless Claims", group=grp_labor)
+i_claims         = input.float(220.0, "Initial Claims (Thousands)", minval=0, maxval=5000, step=5, group=grp_labor)
+
+i_show_wages     = input.bool(false, "Show Avg Hourly Earnings YoY", group=grp_labor)
+i_wages_yoy      = input.float(3.9, "Avg Hourly Earnings YoY (%)", minval=-5, maxval=15, step=0.1, group=grp_labor)
+
+i_show_lfpr      = input.bool(false, "Show Labor Force Participation Rate", group=grp_labor)
+i_lfpr           = input.float(62.5, "LFPR (%)", minval=55, maxval=70, step=0.1, group=grp_labor)
+
+// ============================================================================
+// SECTION 5: ECONOMIC GROWTH
+// ============================================================================
+
+grp_growth = "═══ ECONOMIC GROWTH ═══"
+
+i_show_gdp       = input.bool(true, "Show GDP Growth QoQ Annualized", group=grp_growth)
+i_gdp            = input.float(2.3, "GDP Growth QoQ Ann. (%)", minval=-35, maxval=35, step=0.1, group=grp_growth)
+i_gdp_color      = input.color(color.teal, "GDP Color", group=grp_growth)
+
+i_show_gdpnow    = input.bool(true, "Show Atlanta Fed GDPNow", group=grp_growth)
+i_gdpnow         = input.float(2.9, "GDPNow Estimate (%)", minval=-35, maxval=35, step=0.1, group=grp_growth)
+
+i_show_ism_mfg   = input.bool(true, "Show ISM Manufacturing PMI", group=grp_growth)
+i_ism_mfg        = input.float(49.3, "ISM Mfg PMI", minval=20, maxval=70, step=0.1, group=grp_growth)
+
+i_show_ism_svc   = input.bool(true, "Show ISM Services PMI", group=grp_growth)
+i_ism_svc        = input.float(54.1, "ISM Services PMI", minval=20, maxval=70, step=0.1, group=grp_growth)
+
+i_show_retail    = input.bool(false, "Show Retail Sales MoM", group=grp_growth)
+i_retail         = input.float(0.4, "Retail Sales MoM (%)", minval=-10, maxval=10, step=0.1, group=grp_growth)
+
+i_show_indprod   = input.bool(false, "Show Industrial Production MoM", group=grp_growth)
+i_indprod        = input.float(0.1, "Industrial Production MoM (%)", minval=-10, maxval=10, step=0.1, group=grp_growth)
+
+// ============================================================================
+// SECTION 6: YIELD CURVE & TREASURY MARKET
+// ============================================================================
+
+grp_yields = "═══ YIELD CURVE & TREASURIES ═══"
+
+i_show_curve     = input.bool(true, "Show Yield Curve Spread (10Y-2Y)", group=grp_yields)
+i_yield_2y       = input.float(4.20, "2Y Treasury Yield (%)", minval=0, maxval=20, step=0.01, group=grp_yields)
+i_yield_10y      = input.float(4.50, "10Y Treasury Yield (%)", minval=0, maxval=20, step=0.01, group=grp_yields)
+i_curve_color    = input.color(color.purple, "Yield Curve Color", group=grp_yields)
+
+i_show_3m        = input.bool(false, "Show 3M T-Bill Yield", group=grp_yields)
+i_yield_3m       = input.float(4.35, "3M T-Bill Yield (%)", minval=0, maxval=20, step=0.01, group=grp_yields)
+
+i_show_5y        = input.bool(false, "Show 5Y Treasury Yield", group=grp_yields)
+i_yield_5y       = input.float(4.30, "5Y Treasury Yield (%)", minval=0, maxval=20, step=0.01, group=grp_yields)
+
+i_show_30y       = input.bool(false, "Show 30Y Treasury Yield", group=grp_yields)
+i_yield_30y      = input.float(4.70, "30Y Treasury Yield (%)", minval=0, maxval=20, step=0.01, group=grp_yields)
+
+i_show_10y3m     = input.bool(false, "Show 10Y-3M Spread (Recession Signal)", group=grp_yields)
+
+i_show_real_rate = input.bool(true, "Show Real Rate (10Y - Core PCE)", group=grp_yields)
+
+// ============================================================================
+// SECTION 7: FINANCIAL CONDITIONS & CREDIT
+// ============================================================================
+
+grp_fin = "═══ FINANCIAL CONDITIONS & CREDIT ═══"
+
+i_show_fci       = input.bool(true, "Show Financial Conditions Index (Manual)", group=grp_fin)
+i_fci            = input.float(99.5, "Chicago Fed FCI / Custom FCI", minval=90, maxval=110, step=0.1, group=grp_fin)
+i_fci_color      = input.color(color.white, "FCI Color", group=grp_fin)
+
+i_show_spread_ig = input.bool(true, "Show IG Corporate Spread (bps)", group=grp_fin)
+i_spread_ig      = input.float(90.0, "IG Credit Spread (bps)", minval=0, maxval=1000, step=5, group=grp_fin)
+
+i_show_spread_hy = input.bool(true, "Show HY Corporate Spread (bps)", group=grp_fin)
+i_spread_hy      = input.float(310.0, "HY Credit Spread (bps)", minval=0, maxval=3000, step=10, group=grp_fin)
+
+i_show_ted       = input.bool(false, "Show TED Spread (bps)", group=grp_fin)
+i_ted_spread     = input.float(15.0, "TED Spread (bps)", minval=0, maxval=500, step=1, group=grp_fin)
+
+i_show_lending   = input.bool(false, "Show Senior Loan Officer Survey (Net %)", group=grp_fin)
+i_lending        = input.float(5.0, "SLOOS Net Tightening (%)", minval=-50, maxval=100, step=1, group=grp_fin)
+
+// ============================================================================
+// SECTION 8: MONEY SUPPLY & LIQUIDITY
+// ============================================================================
+
+grp_money = "═══ MONEY SUPPLY & LIQUIDITY ═══"
+
+i_show_m2        = input.bool(true, "Show M2 Money Supply YoY", group=grp_money)
+i_m2_yoy         = input.float(3.5, "M2 YoY Growth (%)", minval=-15, maxval=30, step=0.1, group=grp_money)
+i_m2_color       = input.color(#00bcd4, "M2 Color", group=grp_money)
+
+i_show_m2_level  = input.bool(false, "Show M2 Level", group=grp_money)
+i_m2_level       = input.float(21.5, "M2 Level ($ Trillions)", minval=0, maxval=30, step=0.1, group=grp_money)
+
+i_show_net_liq   = input.bool(true, "Show Net Liquidity (BS - TGA - RRP)", group=grp_money)
+
+// ============================================================================
+// SECTION 9: GLOBAL MACRO / CROSS-MARKET
+// ============================================================================
+
+grp_global = "═══ GLOBAL / CROSS-MARKET ═══"
+
+i_show_dxy       = input.bool(true, "Show DXY (Dollar Index)", group=grp_global)
+i_dxy            = input.float(108.0, "DXY Level", minval=60, maxval=150, step=0.1, group=grp_global)
+i_dxy_color      = input.color(color.fuchsia, "DXY Color", group=grp_global)
+
+i_show_vix       = input.bool(true, "Show VIX", group=grp_global)
+i_vix            = input.float(16.5, "VIX Level", minval=5, maxval=90, step=0.5, group=grp_global)
+
+i_show_oil       = input.bool(false, "Show WTI Crude Oil ($/bbl)", group=grp_global)
+i_oil            = input.float(73.0, "WTI Crude ($/bbl)", minval=0, maxval=200, step=0.5, group=grp_global)
+
+i_show_gold      = input.bool(false, "Show Gold ($/oz)", group=grp_global)
+i_gold           = input.float(2050.0, "Gold ($/oz)", minval=0, maxval=5000, step=10, group=grp_global)
+
+i_show_copper    = input.bool(false, "Show Copper ($/lb)", group=grp_global)
+i_copper         = input.float(3.85, "Copper ($/lb)", minval=0, maxval=10, step=0.05, group=grp_global)
+
+// ============================================================================
+// SECTION 10: FED FORWARD GUIDANCE / DOT PLOT
+// ============================================================================
+
+grp_dots = "═══ FED FORWARD GUIDANCE / DOT PLOT ═══"
+
+i_show_dots      = input.bool(true, "Show Dot Plot Projections", group=grp_dots)
+i_dot_2025       = input.float(3.75, "Median Dot - End of Current Year (%)", minval=0, maxval=10, step=0.125, group=grp_dots)
+i_dot_2026       = input.float(3.25, "Median Dot - End of Next Year (%)", minval=0, maxval=10, step=0.125, group=grp_dots)
+i_dot_longer     = input.float(3.00, "Median Dot - Longer Run / r* (%)", minval=0, maxval=10, step=0.125, group=grp_dots)
+
+i_show_mkt_cuts  = input.bool(true, "Show Market-Implied Rate Cuts", group=grp_dots)
+i_mkt_cuts       = input.float(2.0, "Fed Funds Futures Implied Cuts (25bp units)", minval=-4, maxval=12, step=0.5, group=grp_dots)
+
+// ============================================================================
+// SECTION 11: DISPLAY SETTINGS
+// ============================================================================
+
+grp_display = "═══ DISPLAY SETTINGS ═══"
+
+i_panel          = input.string("Dashboard", "Display Mode", options=["Dashboard", "Rates Panel", "Inflation Panel", "Growth Panel", "Liquidity Panel", "Yield Curve Panel", "Composite Score"], group=grp_display)
+i_show_zones     = input.bool(true, "Show Regime Zones (Hawkish/Dovish)", group=grp_display)
+i_show_table     = input.bool(true, "Show Data Table", group=grp_display)
+i_table_pos      = input.string("Top Right", "Table Position", options=["Top Right", "Top Left", "Bottom Right", "Bottom Left"], group=grp_display)
+i_table_size     = input.string("Normal", "Table Text Size", options=["Small", "Normal", "Large"], group=grp_display)
+
+// ============================================================================
+// CALCULATIONS
+// ============================================================================
+
+// --- Yield Curve ---
+spread_10y2y  = i_yield_10y - i_yield_2y
+spread_10y3m  = i_yield_10y - i_yield_3m
+
+// --- Real Rate ---
+real_rate = i_yield_10y - i_core_pce
+
+// --- Net Liquidity ---
+net_liquidity = i_bs_total - i_tga - i_rrp_balance
+
+// --- QT Total Monthly Pace ---
+qt_total = i_qt_treasury + i_qt_mbs
+
+// --- Fed Funds Midpoint ---
+ffr_mid = (i_ffr_upper + i_ffr_lower) / 2
+
+// --- Rate Cut Implied Target ---
+implied_target = ffr_mid - (i_mkt_cuts * 0.25)
+
+// ============================================================================
+// COMPOSITE MACRO SCORE (-100 to +100)
+// Positive = Risk-On / Dovish Lean  |  Negative = Risk-Off / Hawkish Lean
+// ============================================================================
+
+score = 0.0
+
+// Inflation distance from target (negative when above target = hawkish pressure)
+infl_gap = i_fed_target - i_core_pce
+score += infl_gap * 10  // each 0.1% away from target = ±1 point
+
+// Labor: higher unemployment = more dovish pressure
+score += (i_unemployment - 4.0) * 5
+
+// Growth: strong GDP is risk-on
+score += (i_gdp - 2.0) * 3
+
+// ISM Manufacturing: above 50 = expansion
+score += (i_ism_mfg - 50) * 0.5
+
+// ISM Services
+score += (i_ism_svc - 50) * 0.3
+
+// Yield curve: positive = healthy, negative = recession risk
+score += spread_10y2y * 10
+
+// Credit spreads: wider = risk-off (use HY)
+score -= (i_spread_hy - 350) * 0.02
+
+// VIX: higher = risk-off
+score -= (i_vix - 20) * 0.5
+
+// Net Liquidity: more liquidity = risk-on
+score += (net_liquidity - 5.5) * 5
+
+// M2 growth
+score += i_m2_yoy * 1.5
+
+// Dollar strength: strong dollar = tighter conditions
+score -= (i_dxy - 100) * 0.3
+
+// Clamp score
+score := math.max(-100, math.min(100, score))
+
+// ============================================================================
+// PLOTTING - PANEL MODE
+// ============================================================================
+
+// --- Rates Panel ---
+plot(i_panel == "Rates Panel" and i_show_ffr ? i_ffr_upper : na, "FFR Upper", i_ffr_color, 2, plot.style_line)
+plot(i_panel == "Rates Panel" and i_show_ffr ? i_ffr_lower : na, "FFR Lower", i_ffr_color, 2, plot.style_line)
+plot(i_panel == "Rates Panel" and i_show_ffr ? ffr_mid : na, "FFR Mid", i_ffr_color, 1, plot.style_cross)
+plot(i_panel == "Rates Panel" and i_show_ioer ? i_ioer : na, "IOER", color.new(color.red, 50), 1, plot.style_line)
+plot(i_panel == "Rates Panel" and i_show_discount ? i_discount : na, "Discount Rate", color.maroon, 1, plot.style_line)
+plot(i_panel == "Rates Panel" and i_show_rrp ? i_rrp_rate : na, "RRP Rate", color.gray, 1, plot.style_line)
+plot(i_panel == "Rates Panel" and i_show_sofr ? i_sofr : na, "SOFR", color.aqua, 1, plot.style_line)
+plot(i_panel == "Rates Panel" and i_show_dots ? i_dot_2025 : na, "Dot CY", color.new(color.yellow, 30), 1, plot.style_cross)
+plot(i_panel == "Rates Panel" and i_show_dots ? i_dot_2026 : na, "Dot NY", color.new(color.yellow, 50), 1, plot.style_cross)
+plot(i_panel == "Rates Panel" and i_show_dots ? i_dot_longer : na, "Dot LR/r*", color.new(color.yellow, 70), 1, plot.style_cross)
+plot(i_panel == "Rates Panel" and i_show_mkt_cuts ? implied_target : na, "Implied Target", color.lime, 1, plot.style_circles)
+
+// --- Inflation Panel ---
+plot(i_panel == "Inflation Panel" and i_show_cpi ? i_cpi_yoy : na, "CPI YoY", i_cpi_color, 2, plot.style_line)
+plot(i_panel == "Inflation Panel" and i_show_core_cpi ? i_core_cpi : na, "Core CPI", color.new(i_cpi_color, 40), 2, plot.style_line)
+plot(i_panel == "Inflation Panel" and i_show_pce ? i_pce_yoy : na, "PCE YoY", i_pce_color, 2, plot.style_line)
+plot(i_panel == "Inflation Panel" and i_show_core_pce ? i_core_pce : na, "Core PCE", color.new(i_pce_color, 40), 2, plot.style_line)
+plot(i_panel == "Inflation Panel" and i_show_ppi ? i_ppi_yoy : na, "PPI", color.olive, 1, plot.style_line)
+plot(i_panel == "Inflation Panel" and i_show_breakeven ? i_breakeven_5y : na, "5Y BEI", color.silver, 1, plot.style_line)
+plot(i_panel == "Inflation Panel" and i_show_be_10y ? i_breakeven_10y : na, "10Y BEI", color.gray, 1, plot.style_line)
+hline_infl_target = hline(i_panel == "Inflation Panel" ? i_fed_target : na, "Fed Target", color.new(color.red, 60), hline.style_dashed)
+
+// --- Growth Panel ---
+plot(i_panel == "Growth Panel" and i_show_gdp ? i_gdp : na, "GDP", i_gdp_color, 2, plot.style_line)
+plot(i_panel == "Growth Panel" and i_show_gdpnow ? i_gdpnow : na, "GDPNow", color.new(i_gdp_color, 40), 2, plot.style_line)
+plot(i_panel == "Growth Panel" and i_show_ism_mfg ? i_ism_mfg : na, "ISM Mfg", color.olive, 2, plot.style_line)
+plot(i_panel == "Growth Panel" and i_show_ism_svc ? i_ism_svc : na, "ISM Svc", color.green, 2, plot.style_line)
+hline_ism_50 = hline(i_panel == "Growth Panel" ? 50.0 : na, "ISM 50 Line", color.gray, hline.style_dotted)
+plot(i_panel == "Growth Panel" and i_show_unemp ? i_unemployment : na, "Unemployment", i_unemp_color, 2, plot.style_line)
+
+// --- Liquidity Panel ---
+plot(i_panel == "Liquidity Panel" and i_show_bs ? i_bs_total : na, "Balance Sheet", i_bs_color, 2, plot.style_line)
+plot(i_panel == "Liquidity Panel" and i_show_net_liq ? net_liquidity : na, "Net Liquidity", color.aqua, 2, plot.style_line)
+plot(i_panel == "Liquidity Panel" and i_show_tga ? i_tga : na, "TGA", color.orange, 1, plot.style_line)
+plot(i_panel == "Liquidity Panel" and i_show_rrp_bal ? i_rrp_balance : na, "RRP Bal", color.gray, 1, plot.style_line)
+plot(i_panel == "Liquidity Panel" and i_show_reserves ? i_reserves : na, "Bank Reserves", color.lime, 1, plot.style_line)
+plot(i_panel == "Liquidity Panel" and i_show_m2 ? i_m2_yoy : na, "M2 YoY", i_m2_color, 2, plot.style_line)
+
+// --- Yield Curve Panel ---
+plot(i_panel == "Yield Curve Panel" and i_show_curve ? spread_10y2y * 100 : na, "10Y-2Y (bps)", i_curve_color, 2, plot.style_line)
+plot(i_panel == "Yield Curve Panel" and i_show_10y3m ? spread_10y3m * 100 : na, "10Y-3M (bps)", color.new(i_curve_color, 40), 2, plot.style_line)
+plot(i_panel == "Yield Curve Panel" and i_show_real_rate ? real_rate * 100 : na, "Real Rate (bps)", color.yellow, 1, plot.style_line)
+hline_zero = hline(i_panel == "Yield Curve Panel" ? 0.0 : na, "Zero Line", color.gray, hline.style_dashed)
+
+// --- Composite Score ---
+score_color = score > 20 ? color.green : score > 0 ? color.new(color.green, 50) : score > -20 ? color.new(color.red, 50) : color.red
+plot(i_panel == "Composite Score" or i_panel == "Dashboard" ? score : na, "Macro Score", score_color, 3, plot.style_columns)
+hline_pos20 = hline(i_panel == "Composite Score" or i_panel == "Dashboard" ? 20 : na, "+20 Risk-On", color.new(color.green, 70), hline.style_dotted)
+hline_neg20 = hline(i_panel == "Composite Score" or i_panel == "Dashboard" ? -20 : na, "-20 Risk-Off", color.new(color.red, 70), hline.style_dotted)
+hline_score0 = hline(i_panel == "Composite Score" or i_panel == "Dashboard" ? 0 : na, "Neutral", color.gray, hline.style_dashed)
+
+// ============================================================================
+// REGIME BACKGROUND ZONES
+// ============================================================================
+
+regime_bg = i_show_zones ? (score > 20 ? color.new(color.green, 92) : score < -20 ? color.new(color.red, 92) : color.new(color.gray, 95)) : na
+bgcolor(regime_bg, title="Regime Zone")
+
+// ============================================================================
+// DATA TABLE
+// ============================================================================
+
+table_x = i_table_pos == "Top Right" ? position.top_right : i_table_pos == "Top Left" ? position.top_left : i_table_pos == "Bottom Right" ? position.bottom_right : position.bottom_left
+tbl_size = i_table_size == "Small" ? size.small : i_table_size == "Large" ? size.large : size.normal
+
+var tbl = table.new(table_x, 3, 30, bgcolor=color.new(color.black, 20), border_width=1, border_color=color.new(color.gray, 60), frame_width=2, frame_color=color.new(color.gray, 40))
+
+// Helper function to color values relative to reference
+f_val_color(float val, float ref, bool higher_is_good) =>
+    diff = val - ref
+    higher_is_good ? (diff > 0 ? color.green : diff < 0 ? color.red : color.gray) : (diff < 0 ? color.green : diff > 0 ? color.red : color.gray)
+
+if barstate.islast and i_show_table
+    row = 0
+
+    // --- Header ---
+    table.cell(tbl, 0, row, "FED MACRO MODEL", text_color=color.white, text_size=tbl_size, bgcolor=color.new(color.blue, 40), text_halign=text.align_center)
+    table.cell(tbl, 1, row, "VALUE", text_color=color.white, text_size=tbl_size, bgcolor=color.new(color.blue, 40), text_halign=text.align_center)
+    table.cell(tbl, 2, row, "SIGNAL", text_color=color.white, text_size=tbl_size, bgcolor=color.new(color.blue, 40), text_halign=text.align_center)
+    row += 1
+
+    // --- Composite Score ---
+    score_signal = score > 20 ? "RISK-ON" : score > 0 ? "LEAN RISK-ON" : score > -20 ? "LEAN RISK-OFF" : "RISK-OFF"
+    table.cell(tbl, 0, row, "Macro Score", text_color=color.white, text_size=tbl_size)
+    table.cell(tbl, 1, row, str.tostring(math.round(score, 1)), text_color=score_color, text_size=tbl_size)
+    table.cell(tbl, 2, row, score_signal, text_color=score_color, text_size=tbl_size)
+    row += 1
+
+    // --- Rates ---
+    if i_show_ffr
+        table.cell(tbl, 0, row, "Fed Funds Rate", text_color=color.white, text_size=tbl_size)
+        table.cell(tbl, 1, row, str.tostring(i_ffr_lower) + " - " + str.tostring(i_ffr_upper) + "%", text_color=i_ffr_color, text_size=tbl_size)
+        hawk_dove = ffr_mid > 3.0 ? "HAWKISH" : ffr_mid > 1.5 ? "NEUTRAL" : "DOVISH"
+        table.cell(tbl, 2, row, hawk_dove, text_color=ffr_mid > 3.0 ? color.red : ffr_mid > 1.5 ? color.gray : color.green, text_size=tbl_size)
+        row += 1
+
+    // --- Inflation ---
+    if i_show_core_pce
+        pce_sig = i_core_pce > i_fed_target + 1 ? "HOT" : i_core_pce > i_fed_target + 0.3 ? "ABOVE TARGET" : i_core_pce >= i_fed_target - 0.3 ? "AT TARGET" : "BELOW TARGET"
+        pce_col = i_core_pce > i_fed_target + 1 ? color.red : i_core_pce > i_fed_target + 0.3 ? color.orange : i_core_pce >= i_fed_target - 0.3 ? color.green : color.aqua
+        table.cell(tbl, 0, row, "Core PCE YoY", text_color=color.white, text_size=tbl_size)
+        table.cell(tbl, 1, row, str.tostring(i_core_pce) + "%", text_color=pce_col, text_size=tbl_size)
+        table.cell(tbl, 2, row, pce_sig, text_color=pce_col, text_size=tbl_size)
+        row += 1
+
+    if i_show_cpi
+        table.cell(tbl, 0, row, "CPI YoY", text_color=color.white, text_size=tbl_size)
+        table.cell(tbl, 1, row, str.tostring(i_cpi_yoy) + "%", text_color=i_cpi_color, text_size=tbl_size)
+        table.cell(tbl, 2, row, i_cpi_yoy > 3 ? "ELEVATED" : "MODERATE", text_color=i_cpi_yoy > 3 ? color.orange : color.green, text_size=tbl_size)
+        row += 1
+
+    // --- Unemployment ---
+    if i_show_unemp
+        ue_sig = i_unemployment > 5.5 ? "WEAK" : i_unemployment > 4.5 ? "SOFTENING" : i_unemployment > 3.5 ? "HEALTHY" : "TIGHT"
+        ue_col = i_unemployment > 5.5 ? color.red : i_unemployment > 4.5 ? color.orange : i_unemployment > 3.5 ? color.green : color.lime
+        table.cell(tbl, 0, row, "Unemployment", text_color=color.white, text_size=tbl_size)
+        table.cell(tbl, 1, row, str.tostring(i_unemployment) + "%", text_color=ue_col, text_size=tbl_size)
+        table.cell(tbl, 2, row, ue_sig, text_color=ue_col, text_size=tbl_size)
+        row += 1
+
+    // --- NFP ---
+    if i_show_nfp
+        nfp_sig = i_nfp > 200 ? "STRONG" : i_nfp > 100 ? "MODERATE" : i_nfp > 0 ? "WEAK" : "CONTRACTION"
+        nfp_col = i_nfp > 200 ? color.green : i_nfp > 100 ? color.lime : i_nfp > 0 ? color.orange : color.red
+        table.cell(tbl, 0, row, "NFP (K)", text_color=color.white, text_size=tbl_size)
+        table.cell(tbl, 1, row, str.tostring(math.round(i_nfp)) + "K", text_color=nfp_col, text_size=tbl_size)
+        table.cell(tbl, 2, row, nfp_sig, text_color=nfp_col, text_size=tbl_size)
+        row += 1
+
+    // --- GDP ---
+    if i_show_gdp
+        gdp_sig = i_gdp > 3.0 ? "STRONG" : i_gdp > 1.5 ? "TREND" : i_gdp > 0 ? "BELOW TREND" : "RECESSION"
+        gdp_col = i_gdp > 3.0 ? color.green : i_gdp > 1.5 ? color.lime : i_gdp > 0 ? color.orange : color.red
+        table.cell(tbl, 0, row, "GDP QoQ Ann.", text_color=color.white, text_size=tbl_size)
+        table.cell(tbl, 1, row, str.tostring(i_gdp) + "%", text_color=gdp_col, text_size=tbl_size)
+        table.cell(tbl, 2, row, gdp_sig, text_color=gdp_col, text_size=tbl_size)
+        row += 1
+
+    // --- ISM ---
+    if i_show_ism_mfg
+        ism_sig = i_ism_mfg > 55 ? "EXPANDING" : i_ism_mfg > 50 ? "GROWTH" : i_ism_mfg > 45 ? "CONTRACTING" : "DEEP CONTRACTION"
+        ism_col = i_ism_mfg > 55 ? color.green : i_ism_mfg > 50 ? color.lime : i_ism_mfg > 45 ? color.orange : color.red
+        table.cell(tbl, 0, row, "ISM Mfg PMI", text_color=color.white, text_size=tbl_size)
+        table.cell(tbl, 1, row, str.tostring(i_ism_mfg), text_color=ism_col, text_size=tbl_size)
+        table.cell(tbl, 2, row, ism_sig, text_color=ism_col, text_size=tbl_size)
+        row += 1
+
+    // --- Yield Curve ---
+    if i_show_curve
+        yc_sig = spread_10y2y < -0.5 ? "INVERTED (RECESSION)" : spread_10y2y < 0 ? "INVERTED" : spread_10y2y < 0.5 ? "FLAT" : "NORMAL"
+        yc_col = spread_10y2y < -0.5 ? color.red : spread_10y2y < 0 ? color.orange : spread_10y2y < 0.5 ? color.yellow : color.green
+        table.cell(tbl, 0, row, "10Y-2Y Spread", text_color=color.white, text_size=tbl_size)
+        table.cell(tbl, 1, row, str.tostring(math.round(spread_10y2y * 100, 1)) + " bps", text_color=yc_col, text_size=tbl_size)
+        table.cell(tbl, 2, row, yc_sig, text_color=yc_col, text_size=tbl_size)
+        row += 1
+
+    // --- Real Rate ---
+    if i_show_real_rate
+        rr_sig = real_rate > 2.0 ? "RESTRICTIVE" : real_rate > 0.5 ? "TIGHT" : real_rate > -0.5 ? "NEUTRAL" : "ACCOMMODATIVE"
+        rr_col = real_rate > 2.0 ? color.red : real_rate > 0.5 ? color.orange : real_rate > -0.5 ? color.gray : color.green
+        table.cell(tbl, 0, row, "Real Rate (10Y-PCE)", text_color=color.white, text_size=tbl_size)
+        table.cell(tbl, 1, row, str.tostring(math.round(real_rate, 2)) + "%", text_color=rr_col, text_size=tbl_size)
+        table.cell(tbl, 2, row, rr_sig, text_color=rr_col, text_size=tbl_size)
+        row += 1
+
+    // --- Net Liquidity ---
+    if i_show_net_liq
+        nl_sig = net_liquidity > 6.0 ? "AMPLE" : net_liquidity > 5.0 ? "ADEQUATE" : net_liquidity > 4.0 ? "TIGHTENING" : "SCARCE"
+        nl_col = net_liquidity > 6.0 ? color.green : net_liquidity > 5.0 ? color.lime : net_liquidity > 4.0 ? color.orange : color.red
+        table.cell(tbl, 0, row, "Net Liquidity ($T)", text_color=color.white, text_size=tbl_size)
+        table.cell(tbl, 1, row, str.tostring(math.round(net_liquidity, 2)) + "T", text_color=nl_col, text_size=tbl_size)
+        table.cell(tbl, 2, row, nl_sig, text_color=nl_col, text_size=tbl_size)
+        row += 1
+
+    // --- Balance Sheet ---
+    if i_show_bs
+        table.cell(tbl, 0, row, "Fed Balance Sheet", text_color=color.white, text_size=tbl_size)
+        table.cell(tbl, 1, row, "$" + str.tostring(i_bs_total) + "T", text_color=i_bs_color, text_size=tbl_size)
+        table.cell(tbl, 2, row, "QT: $" + str.tostring(math.round(qt_total)) + "B/mo", text_color=color.gray, text_size=tbl_size)
+        row += 1
+
+    // --- M2 ---
+    if i_show_m2
+        m2_sig = i_m2_yoy > 5 ? "EXPANSIONARY" : i_m2_yoy > 0 ? "GROWING" : "CONTRACTING"
+        m2_col = i_m2_yoy > 5 ? color.green : i_m2_yoy > 0 ? color.lime : color.red
+        table.cell(tbl, 0, row, "M2 YoY", text_color=color.white, text_size=tbl_size)
+        table.cell(tbl, 1, row, str.tostring(i_m2_yoy) + "%", text_color=m2_col, text_size=tbl_size)
+        table.cell(tbl, 2, row, m2_sig, text_color=m2_col, text_size=tbl_size)
+        row += 1
+
+    // --- Credit Spreads ---
+    if i_show_spread_hy
+        hy_sig = i_spread_hy > 600 ? "STRESS" : i_spread_hy > 400 ? "ELEVATED" : i_spread_hy > 300 ? "NORMAL" : "TIGHT"
+        hy_col = i_spread_hy > 600 ? color.red : i_spread_hy > 400 ? color.orange : i_spread_hy > 300 ? color.gray : color.green
+        table.cell(tbl, 0, row, "HY Spread", text_color=color.white, text_size=tbl_size)
+        table.cell(tbl, 1, row, str.tostring(math.round(i_spread_hy)) + " bps", text_color=hy_col, text_size=tbl_size)
+        table.cell(tbl, 2, row, hy_sig, text_color=hy_col, text_size=tbl_size)
+        row += 1
+
+    // --- DXY ---
+    if i_show_dxy
+        dxy_sig = i_dxy > 110 ? "VERY STRONG" : i_dxy > 100 ? "STRONG" : i_dxy > 90 ? "MODERATE" : "WEAK"
+        dxy_col = i_dxy > 110 ? color.fuchsia : i_dxy > 100 ? color.purple : i_dxy > 90 ? color.gray : color.green
+        table.cell(tbl, 0, row, "DXY", text_color=color.white, text_size=tbl_size)
+        table.cell(tbl, 1, row, str.tostring(math.round(i_dxy, 1)), text_color=dxy_col, text_size=tbl_size)
+        table.cell(tbl, 2, row, dxy_sig, text_color=dxy_col, text_size=tbl_size)
+        row += 1
+
+    // --- VIX ---
+    if i_show_vix
+        vix_sig = i_vix > 30 ? "FEAR" : i_vix > 20 ? "ELEVATED" : i_vix > 12 ? "NORMAL" : "COMPLACENT"
+        vix_col = i_vix > 30 ? color.red : i_vix > 20 ? color.orange : i_vix > 12 ? color.gray : color.green
+        table.cell(tbl, 0, row, "VIX", text_color=color.white, text_size=tbl_size)
+        table.cell(tbl, 1, row, str.tostring(math.round(i_vix, 1)), text_color=vix_col, text_size=tbl_size)
+        table.cell(tbl, 2, row, vix_sig, text_color=vix_col, text_size=tbl_size)
+        row += 1
+
+    // --- Dot Plot ---
+    if i_show_dots
+        table.cell(tbl, 0, row, "Dots (CY/NY/LR)", text_color=color.white, text_size=tbl_size)
+        table.cell(tbl, 1, row, str.tostring(i_dot_2025) + " / " + str.tostring(i_dot_2026) + " / " + str.tostring(i_dot_longer) + "%", text_color=color.yellow, text_size=tbl_size)
+        cuts_dir = i_mkt_cuts > 0 ? "CUTS" : i_mkt_cuts < 0 ? "HIKES" : "HOLD"
+        table.cell(tbl, 2, row, str.tostring(math.abs(i_mkt_cuts)) + " " + cuts_dir + " PRICED", text_color=i_mkt_cuts > 0 ? color.green : i_mkt_cuts < 0 ? color.red : color.gray, text_size=tbl_size)
+        row += 1
+
+// ============================================================================
+// ALERT CONDITIONS
+// ============================================================================
+
+alertcondition(score > 20 and score[1] <= 20, "Risk-On Regime", "Macro Score crossed above +20: Risk-On regime")
+alertcondition(score < -20 and score[1] >= -20, "Risk-Off Regime", "Macro Score crossed below -20: Risk-Off regime")
+alertcondition(spread_10y2y < 0 and spread_10y2y[1] >= 0, "Yield Curve Inversion", "10Y-2Y yield curve has inverted")
+alertcondition(spread_10y2y > 0 and spread_10y2y[1] <= 0, "Yield Curve Normalization", "10Y-2Y yield curve has normalized")
