@@ -247,6 +247,13 @@ i_show_table     = input.bool(true, "Show Data Table", group=grp_display)
 i_table_pos      = input.string("Top Right", "Table Position", options=["Top Right", "Top Left", "Bottom Right", "Bottom Left"], group=grp_display)
 i_table_size     = input.string("Normal", "Table Text Size", options=["Small", "Normal", "Large"], group=grp_display)
 
+grp_terminal = "═══ BLOOMBERG TERMINAL BOX ═══"
+
+i_show_terminal  = input.bool(true, "Show Terminal Narrative Box", group=grp_terminal)
+i_term_pos       = input.string("Bottom Left", "Terminal Position", options=["Top Right", "Top Left", "Bottom Right", "Bottom Left"], group=grp_terminal)
+i_term_size      = input.string("Small", "Terminal Text Size", options=["Small", "Normal", "Large"], group=grp_terminal)
+i_term_style     = input.string("Classic Amber", "Terminal Color Theme", options=["Classic Amber", "Green Screen", "White on Black", "Cyan Terminal"], group=grp_terminal)
+
 // ============================================================================
 // CALCULATIONS
 // ============================================================================
@@ -543,6 +550,131 @@ if barstate.islast and i_show_table
         cuts_dir = i_mkt_cuts > 0 ? "CUTS" : i_mkt_cuts < 0 ? "HIKES" : "HOLD"
         table.cell(tbl, 2, row, str.tostring(math.abs(i_mkt_cuts)) + " " + cuts_dir + " PRICED", text_color=i_mkt_cuts > 0 ? color.green : i_mkt_cuts < 0 ? color.red : color.gray, text_size=tbl_size)
         row += 1
+
+// ============================================================================
+// BLOOMBERG-STYLE TERMINAL NARRATIVE BOX
+// ============================================================================
+
+term_x = i_term_pos == "Top Right" ? position.top_right : i_term_pos == "Top Left" ? position.top_left : i_term_pos == "Bottom Right" ? position.bottom_right : position.bottom_left
+term_sz = i_term_size == "Small" ? size.small : i_term_size == "Large" ? size.large : size.normal
+term_fg = i_term_style == "Classic Amber" ? #FFB000 : i_term_style == "Green Screen" ? #33FF33 : i_term_style == "Cyan Terminal" ? #00FFFF : #DDDDDD
+term_header_fg = i_term_style == "Classic Amber" ? #FF8C00 : i_term_style == "Green Screen" ? #00CC00 : i_term_style == "Cyan Terminal" ? #0099CC : #FFFFFF
+term_bg = color.new(#0A0A0A, 0)
+term_border = i_term_style == "Classic Amber" ? color.new(#FFB000, 60) : i_term_style == "Green Screen" ? color.new(#33FF33, 60) : i_term_style == "Cyan Terminal" ? color.new(#00FFFF, 60) : color.new(#555555, 60)
+term_accent = i_term_style == "Classic Amber" ? #FFCC44 : i_term_style == "Green Screen" ? #88FF88 : i_term_style == "Cyan Terminal" ? #66FFFF : #FFFFFF
+
+var term_tbl = table.new(term_x, 1, 14, bgcolor=term_bg, border_width=1, border_color=term_border, frame_width=2, frame_color=term_border)
+
+if barstate.islast and i_show_terminal
+    trow = 0
+
+    // ── HEADER ──
+    regime_label = score > 20 ? "RISK-ON" : score > 0 ? "LEAN RISK-ON" : score > -20 ? "LEAN RISK-OFF" : "RISK-OFF"
+    regime_arrow = score > 20 ? ">>>" : score > 0 ? ">>" : score > -20 ? "<<" : "<<<"
+    header_line = "╔══ FED MACRO TERMINAL ══╗  REGIME: " + regime_label + " " + regime_arrow + "  SCORE: " + str.tostring(math.round(score, 1)) + "/100"
+    table.cell(term_tbl, 0, trow, header_line, text_color=term_header_fg, text_size=term_sz, bgcolor=color.new(#1A1A1A, 0), text_halign=text.align_left)
+    trow += 1
+
+    // ── MONETARY POLICY ──
+    policy_stance = ffr_mid > 4.5 ? "deeply restrictive" : ffr_mid > 3.5 ? "restrictive" : ffr_mid > 2.5 ? "moderately tight" : ffr_mid > 1.5 ? "neutral" : ffr_mid > 0.5 ? "accommodative" : "emergency easing"
+    rate_vs_dots = ffr_mid > i_dot_longer + 1.5 ? "well above" : ffr_mid > i_dot_longer + 0.5 ? "above" : ffr_mid > i_dot_longer - 0.5 ? "near" : "below"
+    cuts_narrative = i_mkt_cuts > 3 ? "aggressive easing cycle" : i_mkt_cuts > 1.5 ? "moderate rate cuts" : i_mkt_cuts > 0.5 ? "gradual rate reductions" : i_mkt_cuts > -0.5 ? "an extended pause" : "further rate hikes"
+    qt_narrative = qt_total > 80 ? "aggressive QT" : qt_total > 40 ? "active balance sheet reduction" : qt_total > 10 ? "tapered QT" : "QT effectively concluded"
+
+    mp_line = "MONETARY POLICY: The Fed holds rates at " + str.tostring(i_ffr_lower) + "-" + str.tostring(i_ffr_upper) + "%, a " + policy_stance + " stance " + rate_vs_dots + " the longer-run neutral rate of " + str.tostring(i_dot_longer) + "%. Markets price " + cuts_narrative + " (" + str.tostring(i_mkt_cuts) + " x 25bp). The FOMC conducts " + qt_narrative + " at $" + str.tostring(math.round(qt_total)) + "B/mo."
+    table.cell(term_tbl, 0, trow, mp_line, text_color=term_fg, text_size=term_sz, bgcolor=term_bg, text_halign=text.align_left)
+    trow += 1
+
+    // ── INFLATION ──
+    infl_status = i_core_pce > i_fed_target + 1.5 ? "remains stubbornly elevated" : i_core_pce > i_fed_target + 0.5 ? "remains above target" : i_core_pce > i_fed_target - 0.3 ? "is converging toward the 2% target" : "has fallen below the Fed's target"
+    cpi_trend = i_cpi_yoy > i_core_cpi ? "headline CPI running above core suggests energy/food pressures" : i_cpi_yoy < i_core_cpi - 0.5 ? "headline CPI below core indicates disinflationary commodity effects" : "headline and core CPI are broadly aligned"
+    bei_read = i_breakeven_5y > 2.8 ? "elevated breakevens signal market concern over persistent inflation" : i_breakeven_5y > 2.2 ? "breakeven inflation expectations remain well-anchored" : i_breakeven_5y > 1.5 ? "breakevens suggest inflation expectations drifting lower" : "breakevens warn of deflationary expectations"
+    gap_bps = str.tostring(math.round((i_core_pce - i_fed_target) * 100))
+
+    infl_line = "INFLATION: Core PCE at " + str.tostring(i_core_pce) + "% " + infl_status + " (" + gap_bps + "bp " + (i_core_pce >= i_fed_target ? "above" : "below") + " target). CPI prints " + str.tostring(i_cpi_yoy) + "% YoY; " + cpi_trend + ". " + bei_read + " (5Y BEI: " + str.tostring(i_breakeven_5y) + "%)."
+    table.cell(term_tbl, 0, trow, infl_line, text_color=term_fg, text_size=term_sz, bgcolor=term_bg, text_halign=text.align_left)
+    trow += 1
+
+    // ── LABOR MARKET ──
+    labor_health = i_unemployment < 3.5 ? "exceptionally tight, risking wage-price spirals" : i_unemployment < 4.0 ? "tight with limited slack" : i_unemployment < 4.5 ? "healthy and near full employment" : i_unemployment < 5.5 ? "showing signs of softening" : "weakening materially, signaling recession risk"
+    nfp_read = i_nfp > 300 ? "robust payroll gains well above trend" : i_nfp > 200 ? "solid job creation above trend" : i_nfp > 100 ? "moderate payroll growth near trend" : i_nfp > 0 ? "below-trend payroll gains" : "payroll contraction"
+    wage_note = i_wages_yoy > 5 ? "Wage growth at " + str.tostring(i_wages_yoy) + "% remains a concern for services inflation." : i_wages_yoy > 3.5 ? "Wage growth at " + str.tostring(i_wages_yoy) + "% is moderating but still above productivity-consistent levels." : "Wage growth at " + str.tostring(i_wages_yoy) + "% is consistent with the inflation target."
+
+    labor_line = "LABOR: Unemployment at " + str.tostring(i_unemployment) + "% -- labor market is " + labor_health + ". NFP: +" + str.tostring(math.round(i_nfp)) + "K, " + nfp_read + ". " + wage_note
+    table.cell(term_tbl, 0, trow, labor_line, text_color=term_fg, text_size=term_sz, bgcolor=term_bg, text_halign=text.align_left)
+    trow += 1
+
+    // ── GROWTH ──
+    gdp_read = i_gdp > 3.5 ? "running hot above potential" : i_gdp > 2.0 ? "at or above trend growth" : i_gdp > 0.5 ? "below trend but positive" : i_gdp > -0.5 ? "stalling near zero" : "contracting"
+    gdpnow_delta = i_gdpnow - i_gdp
+    gdpnow_dir = gdpnow_delta > 0.5 ? "tracking notably above last print, suggesting acceleration" : gdpnow_delta > -0.5 ? "tracking near the last GDP print" : "tracking below the last print, flagging deceleration"
+    ism_mfg_read = i_ism_mfg > 55 ? "Manufacturing PMI at " + str.tostring(i_ism_mfg) + " shows robust factory expansion." : i_ism_mfg > 50 ? "Manufacturing PMI at " + str.tostring(i_ism_mfg) + " signals modest expansion." : i_ism_mfg > 45 ? "Manufacturing PMI at " + str.tostring(i_ism_mfg) + " is in contraction territory." : "Manufacturing PMI at " + str.tostring(i_ism_mfg) + " reflects deep industrial weakness."
+    ism_svc_read = i_ism_svc > 55 ? "Services PMI at " + str.tostring(i_ism_svc) + " shows a healthy services economy." : i_ism_svc > 50 ? "Services PMI at " + str.tostring(i_ism_svc) + " indicates the services sector continues expanding." : "Services PMI at " + str.tostring(i_ism_svc) + " has fallen into contraction -- a rare and significant warning."
+
+    growth_line = "GROWTH: GDP at " + str.tostring(i_gdp) + "% QoQ ann., " + gdp_read + ". GDPNow at " + str.tostring(i_gdpnow) + "%, " + gdpnow_dir + ". " + ism_mfg_read + " " + ism_svc_read
+    table.cell(term_tbl, 0, trow, growth_line, text_color=term_fg, text_size=term_sz, bgcolor=term_bg, text_halign=text.align_left)
+    trow += 1
+
+    // ── YIELD CURVE & RATES ──
+    curve_read = spread_10y2y < -0.50 ? "deeply inverted -- a historically reliable recession signal, though timing is uncertain" : spread_10y2y < 0 ? "inverted, maintaining a recession warning" : spread_10y2y < 0.25 ? "flat, reflecting uncertainty about the growth outlook" : "positively sloped, consistent with expected economic expansion"
+    real_stance = real_rate > 2.5 ? "highly restrictive" : real_rate > 1.5 ? "restrictive" : real_rate > 0.5 ? "moderately tight" : real_rate > -0.5 ? "neutral" : "accommodative"
+
+    yc_line = "RATES: The 10Y-2Y spread at " + str.tostring(math.round(spread_10y2y * 100)) + "bp is " + curve_read + ". The real rate (10Y minus Core PCE) stands at " + str.tostring(math.round(real_rate, 2)) + "%, a " + real_stance + " level for the real economy. The 10Y yield at " + str.tostring(i_yield_10y) + "% vs 2Y at " + str.tostring(i_yield_2y) + "% reflects market rate path expectations."
+    table.cell(term_tbl, 0, trow, yc_line, text_color=term_fg, text_size=term_sz, bgcolor=term_bg, text_halign=text.align_left)
+    trow += 1
+
+    // ── LIQUIDITY CONDITIONS ──
+    nl_read = net_liquidity > 6.5 ? "abundant -- a powerful tailwind for risk assets" : net_liquidity > 5.5 ? "adequate and supportive of markets" : net_liquidity > 4.5 ? "tightening and potentially constraining risk appetite" : "scarce -- a significant headwind for asset prices"
+    tga_note = i_tga > 0.8 ? "An elevated TGA ($" + str.tostring(i_tga) + "T) is draining reserves from the system." : i_tga > 0.4 ? "The TGA at $" + str.tostring(i_tga) + "T is at moderate levels." : "A low TGA ($" + str.tostring(i_tga) + "T) suggests Treasury is spending down its cash, injecting liquidity."
+    rrp_note = i_rrp_balance > 1.0 ? "The RRP facility at $" + str.tostring(i_rrp_balance) + "T still holds substantial reserves that could re-enter markets." : i_rrp_balance > 0.2 ? "The RRP at $" + str.tostring(i_rrp_balance) + "T has declined substantially from its peak." : "The RRP at $" + str.tostring(i_rrp_balance) + "T is nearly drained -- further QT risks reserve scarcity."
+    m2_note = i_m2_yoy > 5 ? "M2 growing at " + str.tostring(i_m2_yoy) + "% YoY signals expansionary monetary conditions." : i_m2_yoy > 0 ? "M2 growth at " + str.tostring(i_m2_yoy) + "% YoY is positive but moderate." : "M2 contracting at " + str.tostring(i_m2_yoy) + "% YoY -- a historically rare event associated with deflationary pressure."
+
+    liq_line = "LIQUIDITY: Net liquidity (BS-TGA-RRP) at $" + str.tostring(math.round(net_liquidity, 2)) + "T is " + nl_read + ". " + tga_note + " " + rrp_note + " " + m2_note
+    table.cell(term_tbl, 0, trow, liq_line, text_color=term_fg, text_size=term_sz, bgcolor=term_bg, text_halign=text.align_left)
+    trow += 1
+
+    // ── FINANCIAL CONDITIONS & CREDIT ──
+    hy_read = i_spread_hy > 600 ? "HY spreads at " + str.tostring(math.round(i_spread_hy)) + "bp signal credit stress and rising default expectations" : i_spread_hy > 450 ? "HY spreads at " + str.tostring(math.round(i_spread_hy)) + "bp are elevated, reflecting credit caution" : i_spread_hy > 300 ? "HY spreads at " + str.tostring(math.round(i_spread_hy)) + "bp remain in a normal range" : "HY spreads at " + str.tostring(math.round(i_spread_hy)) + "bp are tight, indicating strong risk appetite"
+    ig_read = i_spread_ig > 200 ? "IG spreads at " + str.tostring(math.round(i_spread_ig)) + "bp are widening -- investment-grade credit is under pressure." : i_spread_ig > 120 ? "IG spreads at " + str.tostring(math.round(i_spread_ig)) + "bp are slightly elevated." : "IG spreads at " + str.tostring(math.round(i_spread_ig)) + "bp are benign."
+
+    credit_line = "CREDIT: " + hy_read + ". " + ig_read + " Overall financial conditions suggest the credit channel is " + (i_spread_hy < 350 ? "not constraining growth." : i_spread_hy < 500 ? "beginning to tighten." : "materially restricting credit availability.")
+    table.cell(term_tbl, 0, trow, credit_line, text_color=term_fg, text_size=term_sz, bgcolor=term_bg, text_halign=text.align_left)
+    trow += 1
+
+    // ── CROSS-MARKET ──
+    dxy_read = i_dxy > 110 ? "A very strong dollar (" + str.tostring(math.round(i_dxy, 1)) + ") tightens global financial conditions, pressures EM debt, and weighs on US multinational earnings." : i_dxy > 103 ? "The dollar at " + str.tostring(math.round(i_dxy, 1)) + " is firm, acting as a modest headwind for commodities and EM." : i_dxy > 95 ? "DXY at " + str.tostring(math.round(i_dxy, 1)) + " is range-bound, with limited cross-asset impact." : "A weak dollar (" + str.tostring(math.round(i_dxy, 1)) + ") supports commodities, EM flows, and US export competitiveness."
+    vix_read = i_vix > 35 ? "VIX at " + str.tostring(math.round(i_vix, 1)) + " reflects panic-level implied vol -- hedging demand is extreme." : i_vix > 25 ? "VIX at " + str.tostring(math.round(i_vix, 1)) + " is elevated, consistent with heightened uncertainty." : i_vix > 16 ? "VIX at " + str.tostring(math.round(i_vix, 1)) + " is in a normal range -- no signs of systemic stress." : "VIX at " + str.tostring(math.round(i_vix, 1)) + " is suppressed, suggesting complacency that often precedes vol spikes."
+
+    global_line = "GLOBAL: " + dxy_read + " " + vix_read
+    table.cell(term_tbl, 0, trow, global_line, text_color=term_fg, text_size=term_sz, bgcolor=term_bg, text_halign=text.align_left)
+    trow += 1
+
+    // ── FORWARD GUIDANCE ──
+    dot_path = i_dot_2025 > ffr_mid ? "The dot plot projects HIKES ahead" : i_dot_2025 < ffr_mid - 0.75 ? "The dot plot projects significant easing" : i_dot_2025 < ffr_mid - 0.25 ? "The dot plot projects moderate easing" : "The dot plot projects rates roughly on hold"
+    mkt_vs_fed = i_mkt_cuts > 3 ? "Markets are pricing far more easing than the Fed projects -- a potential dislocation if the Fed pushes back." : math.abs(implied_target - i_dot_2025) < 0.3 ? "Market pricing is broadly aligned with the dot plot." : implied_target < i_dot_2025 ? "Markets expect more cuts than the dots suggest -- dovish market positioning vs the Fed." : "Markets price fewer cuts (or more hikes) than dots -- hawkish positioning vs the FOMC."
+    rstar_note = "The longer-run neutral rate (r*) at " + str.tostring(i_dot_longer) + "% implies the current stance is " + str.tostring(math.round((ffr_mid - i_dot_longer) * 100)) + "bp " + (ffr_mid > i_dot_longer ? "above" : "below") + " neutral."
+
+    fwd_line = "GUIDANCE: " + dot_path + " (CY: " + str.tostring(i_dot_2025) + "%, NY: " + str.tostring(i_dot_2026) + "%). " + mkt_vs_fed + " " + rstar_note
+    table.cell(term_tbl, 0, trow, fwd_line, text_color=term_fg, text_size=term_sz, bgcolor=term_bg, text_halign=text.align_left)
+    trow += 1
+
+    // ── TRADING BIAS CONCLUSION ──
+    // Build macro regime description
+    regime_desc = score > 40 ? "The macro regime is decisively risk-on." : score > 20 ? "The macro backdrop favors risk assets." : score > 0 ? "Conditions lean mildly constructive but lack conviction." : score > -20 ? "Conditions lean cautious -- risk management is warranted." : score > -40 ? "The macro backdrop is risk-off. Defensive positioning is favored." : "The macro regime is deeply risk-off. Capital preservation is paramount."
+
+    // Key risk / catalyst
+    top_risk = i_core_pce > i_fed_target + 1.0 and i_unemployment < 4.0 ? "Key risk: stagflation dynamics if inflation re-accelerates while growth softens." : spread_10y2y < -0.3 ? "Key risk: yield curve inversion historically precedes recession by 6-18 months." : i_vix < 13 and i_spread_hy < 280 ? "Key risk: extreme complacency across vol and credit -- vulnerable to a shock." : net_liquidity < 4.5 ? "Key risk: thin liquidity conditions amplify downside moves and funding stress." : i_unemployment > 5.0 ? "Key risk: labor market deterioration could trigger a negative feedback loop in consumer spending." : "Primary catalyst: the path of Core PCE toward the 2% target will drive the Fed's next move."
+
+    // Asset class bias
+    asset_bias = score > 20 ? "Favor equities, credit, and cyclicals. Duration is less attractive at current yields unless growth falters." : score > 0 ? "Neutral-to-positive equities. Consider barbell: quality growth + selective cyclical exposure." : score > -20 ? "Underweight risk. Favor duration, defensive sectors, and cash. Reduce credit beta." : "Maximum defense. Favor Treasuries, gold, USD, and cash. Minimize equity and credit exposure."
+
+    bias_line = "CONCLUSION: " + regime_desc + " " + top_risk + " " + asset_bias
+    table.cell(term_tbl, 0, trow, bias_line, text_color=term_accent, text_size=term_sz, bgcolor=color.new(#1A1A1A, 0), text_halign=text.align_left)
+    trow += 1
+
+    // ── TIMESTAMP ──
+    footer_line = "╚══ END TERMINAL ══╝  Data is user-input. Update inputs after each data release for real-time assessment."
+    table.cell(term_tbl, 0, trow, footer_line, text_color=term_header_fg, text_size=term_sz, bgcolor=color.new(#1A1A1A, 0), text_halign=text.align_left)
 
 // ============================================================================
 // ALERT CONDITIONS
