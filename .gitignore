@@ -1,0 +1,12 @@
+# Claude Code internal working directory
+.claude/
+
+# Node / npm
+node_modules/
+dist/
+.env
+.env.local
+
+# OS
+.DS_Store
+Thumbs.db
